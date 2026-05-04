@@ -1,0 +1,28 @@
+# dependencies
+node_modules
+
+# next.js
+.next
+out
+public/uploads/*
+!public/uploads/.gitkeep
+
+# production
+build
+
+# prisma
+*.db
+*.db-journal
+
+# env
+.env
+.env*.local
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# system
+.DS_Store
