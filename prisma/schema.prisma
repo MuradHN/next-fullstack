@@ -23,34 +23,46 @@ model User {
   updatedAt    DateTime @updatedAt
 }
 
-model Category {
+model Banner {
   id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  posts     Post[]
+  title     String
+  image     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  imageUrl  String?
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
   id          String   @id @default(cuid())
-  title       String
+  name        String
   description String
+  price       Int
+  quantity    Int
+  inventory   Int
   categoryId  String
   category    Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  images      PostImage[]
+  images      ProductImage[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([categoryId])
 }
 
-model PostImage {
+model ProductImage {
   id        String   @id @default(cuid())
   url       String
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
-  @@index([postId])
+  @@index([productId])
 }

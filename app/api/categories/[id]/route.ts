@@ -18,9 +18,11 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const body = (await request.json()) as {
+    imageUrl?: unknown;
     name?: unknown;
     slug?: unknown;
   };
+  const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : null;
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
 
@@ -34,6 +36,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         id
       },
       data: {
+        imageUrl,
         name,
         slug
       }
@@ -64,6 +67,19 @@ export async function DELETE(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
 
+  const productCount = await prisma.product.count({
+    where: {
+      categoryId: id
+    }
+  });
+
+  if (productCount > 0) {
+    return NextResponse.json(
+      { message: "Category has products and cannot be deleted" },
+      { status: 409 }
+    );
+  }
+
   try {
     await prisma.category.delete({
       where: {
@@ -74,13 +90,6 @@ export async function DELETE(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2003") {
-        return NextResponse.json(
-          { message: "Category has posts and cannot be deleted" },
-          { status: 409 }
-        );
-      }
-
       if (error.code === "P2025") {
         return NextResponse.json({ message: "Category not found" }, { status: 404 });
       }

@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -27,25 +28,35 @@ type CurrentUser = {
   name: string | null;
 };
 
+type Banner = {
+  id: string;
+  image: string;
+  title: string;
+};
+
 type Category = {
   id: string;
+  imageUrl: string | null;
   name: string;
   slug: string;
   _count?: {
-    posts: number;
+    products: number;
   };
 };
 
-type Post = {
+type Product = {
   id: string;
-  title: string;
-  description: string;
   categoryId: string;
   category: Category;
-  images: PostImage[];
+  description: string;
+  images: ProductImage[];
+  inventory: number;
+  name: string;
+  price: number;
+  quantity: number;
 };
 
-type PostImage = {
+type ProductImage = {
   id: string;
   url: string;
 };
@@ -56,23 +67,33 @@ type User = {
   name: string | null;
 };
 
-type Entity = "category" | "post" | "user";
+type Entity = "banner" | "category" | "product" | "user";
 type EditingState =
+  | { entity: "banner"; record?: Banner }
   | { entity: "category"; record?: Category }
-  | { entity: "post"; record?: Post }
+  | { entity: "product"; record?: Product }
   | { entity: "user"; record?: User }
   | null;
 
+type BannerValues = {
+  image: string | null;
+  title: string;
+};
+
 type CategoryValues = {
+  imageUrl: string | null;
   name: string;
   slug: string;
 };
 
-type PostValues = {
-  title: string;
-  description: string;
+type ProductValues = {
   categoryId: string;
+  description: string;
   imageUrls: string[];
+  inventory: number;
+  name: string;
+  price: number;
+  quantity: number;
 };
 
 type UserValues = {
@@ -104,25 +125,36 @@ export function AdminDashboard({
 }: {
   currentUser: CurrentUser;
   initialData: {
+    banners: Banner[];
     categories: Category[];
-    posts: Post[];
+    products: Product[];
     users: User[];
   };
 }) {
   const router = useRouter();
   const { message } = App.useApp();
+  const bannerForm = useForm<BannerValues>({
+    defaultValues: {
+      image: null,
+      title: ""
+    }
+  });
   const categoryForm = useForm<CategoryValues>({
     defaultValues: {
+      imageUrl: null,
       name: "",
       slug: ""
     }
   });
-  const postForm = useForm<PostValues>({
+  const productForm = useForm<ProductValues>({
     defaultValues: {
       categoryId: "",
       description: "",
       imageUrls: [],
-      title: ""
+      inventory: 0,
+      name: "",
+      price: 0,
+      quantity: 0
     }
   });
   const userForm = useForm<UserValues>({
@@ -132,8 +164,9 @@ export function AdminDashboard({
       password: ""
     }
   });
+  const [banners, setBanners] = useState<Banner[]>(initialData.banners);
   const [categories, setCategories] = useState<Category[]>(initialData.categories);
-  const [posts, setPosts] = useState<Post[]>(initialData.posts);
+  const [products, setProducts] = useState<Product[]>(initialData.products);
   const [users, setUsers] = useState<User[]>(initialData.users);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -153,14 +186,16 @@ export function AdminDashboard({
     setLoading(true);
 
     try {
-      const [categoryData, postData, userData] = await Promise.all([
+      const [bannerData, categoryData, productData, userData] = await Promise.all([
+        requestJson<{ banners: Banner[] }>("/api/banners"),
         requestJson<{ categories: Category[] }>("/api/categories"),
-        requestJson<{ posts: Post[] }>("/api/posts"),
+        requestJson<{ products: Product[] }>("/api/products"),
         requestJson<{ users: User[] }>("/api/users")
       ]);
 
+      setBanners(bannerData.banners);
       setCategories(categoryData.categories);
-      setPosts(postData.posts);
+      setProducts(productData.products);
       setUsers(userData.users);
     } catch (error) {
       message.error(error instanceof Error ? error.message : "Failed to load data");
@@ -171,15 +206,23 @@ export function AdminDashboard({
 
   function openCreate(entity: Entity) {
     setEditing({ entity });
+    bannerForm.reset({
+      image: null,
+      title: ""
+    });
     categoryForm.reset({
+      imageUrl: null,
       name: "",
       slug: ""
     });
-    postForm.reset({
+    productForm.reset({
       categoryId: "",
       description: "",
       imageUrls: [],
-      title: ""
+      inventory: 0,
+      name: "",
+      price: 0,
+      quantity: 0
     });
     userForm.reset({
       email: "",
@@ -188,29 +231,43 @@ export function AdminDashboard({
     });
   }
 
+  function openEdit(entity: "banner", record: Banner): void;
   function openEdit(entity: "category", record: Category): void;
-  function openEdit(entity: "post", record: Post): void;
+  function openEdit(entity: "product", record: Product): void;
   function openEdit(entity: "user", record: User): void;
-  function openEdit(entity: Entity, record: Category | Post | User) {
+  function openEdit(entity: Entity, record: Banner | Category | Product | User) {
     setEditing({ entity, record } as EditingState);
+
+    if (entity === "banner") {
+      const banner = record as Banner;
+
+      bannerForm.reset({
+        image: banner.image,
+        title: banner.title
+      });
+    }
 
     if (entity === "category") {
       const category = record as Category;
 
       categoryForm.reset({
+        imageUrl: category.imageUrl,
         name: category.name,
         slug: category.slug
       });
     }
 
-    if (entity === "post") {
-      const post = record as Post;
+    if (entity === "product") {
+      const product = record as Product;
 
-      postForm.reset({
-        categoryId: post.categoryId,
-        description: post.description,
-        imageUrls: post.images.map((image) => image.url),
-        title: post.title
+      productForm.reset({
+        categoryId: product.categoryId,
+        description: product.description,
+        imageUrls: product.images.map((image) => image.url),
+        inventory: product.inventory,
+        name: product.name,
+        price: product.price,
+        quantity: product.quantity
       });
     }
 
@@ -226,7 +283,14 @@ export function AdminDashboard({
   }
 
   async function handleDelete(entity: Entity, id: string) {
-    const resource = entity === "category" ? "categories" : `${entity}s`;
+    const resource =
+      entity === "banner"
+        ? "banners"
+        : entity === "category"
+          ? "categories"
+          : entity === "product"
+            ? "products"
+            : "users";
 
     try {
       await requestJson(`/api/${resource}/${id}`, {
@@ -247,6 +311,16 @@ export function AdminDashboard({
     router.refresh();
   }
 
+  async function submitBanner(values: BannerValues) {
+    const record = editing?.entity === "banner" ? editing.record : undefined;
+
+    await saveEntity(
+      record ? `/api/banners/${record.id}` : "/api/banners",
+      record ? "PATCH" : "POST",
+      values
+    );
+  }
+
   async function submitCategory(values: CategoryValues) {
     const record = editing?.entity === "category" ? editing.record : undefined;
 
@@ -257,11 +331,11 @@ export function AdminDashboard({
     );
   }
 
-  async function submitPost(values: PostValues) {
-    const record = editing?.entity === "post" ? editing.record : undefined;
+  async function submitProduct(values: ProductValues) {
+    const record = editing?.entity === "product" ? editing.record : undefined;
 
     await saveEntity(
-      record ? `/api/posts/${record.id}` : "/api/posts",
+      record ? `/api/products/${record.id}` : "/api/products",
       record ? "PATCH" : "POST",
       values
     );
@@ -334,6 +408,17 @@ export function AdminDashboard({
 
   const categoryColumns: ColumnsType<Category> = [
     {
+      title: "Image",
+      width: 90,
+      render: (_, record) =>
+        record.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img alt={record.name} className="h-12 w-12 rounded object-cover" src={record.imageUrl} />
+        ) : (
+          "-"
+        )
+    },
+    {
       title: "Name",
       dataIndex: "name"
     },
@@ -342,8 +427,8 @@ export function AdminDashboard({
       dataIndex: "slug"
     },
     {
-      title: "Posts",
-      render: (_, record) => record._count?.posts ?? 0
+      title: "Products",
+      render: (_, record) => record._count?.products ?? 0
     },
     {
       title: "Actions",
@@ -362,10 +447,40 @@ export function AdminDashboard({
     }
   ];
 
-  const postColumns: ColumnsType<Post> = [
+  const bannerColumns: ColumnsType<Banner> = [
+    {
+      title: "Image",
+      width: 140,
+      render: (_, record) =>
+        record.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img alt={record.title} className="h-16 w-28 rounded object-cover" src={record.image} />
+        ) : (
+          "-"
+        )
+    },
     {
       title: "Title",
       dataIndex: "title"
+    },
+    {
+      title: "Actions",
+      width: 160,
+      render: (_, record) => (
+        <Space>
+          <Button onClick={() => openEdit("banner", record)}>Edit</Button>
+          <Popconfirm title="Delete banner?" onConfirm={() => handleDelete("banner", record.id)}>
+            <Button danger>Delete</Button>
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ];
+
+  const productColumns: ColumnsType<Product> = [
+    {
+      title: "Name",
+      dataIndex: "name"
     },
     {
       title: "Description",
@@ -377,6 +492,18 @@ export function AdminDashboard({
       render: (_, record) => record.category?.name
     },
     {
+      title: "Price",
+      render: (_, record) => formatCurrency(record.price)
+    },
+    {
+      title: "Quantity",
+      dataIndex: "quantity"
+    },
+    {
+      title: "Inventory",
+      dataIndex: "inventory"
+    },
+    {
       title: "Images",
       render: (_, record) => record.images.length
     },
@@ -385,8 +512,8 @@ export function AdminDashboard({
       width: 160,
       render: (_, record) => (
         <Space>
-          <Button onClick={() => openEdit("post", record)}>Edit</Button>
-          <Popconfirm title="Delete post?" onConfirm={() => handleDelete("post", record.id)}>
+          <Button onClick={() => openEdit("product", record)}>Edit</Button>
+          <Popconfirm title="Delete product?" onConfirm={() => handleDelete("product", record.id)}>
             <Button danger>Delete</Button>
           </Popconfirm>
         </Space>
@@ -438,6 +565,23 @@ export function AdminDashboard({
           <Tabs
             items={[
               {
+                key: "banners",
+                label: "Banners",
+                children: (
+                  <div className="grid gap-4">
+                    <Button className="w-fit" type="primary" onClick={() => openCreate("banner")}>
+                      Add banner
+                    </Button>
+                    <Table<Banner>
+                      columns={bannerColumns}
+                      dataSource={banners}
+                      loading={loading}
+                      rowKey="id"
+                    />
+                  </div>
+                )
+              },
+              {
                 key: "categories",
                 label: "Categories",
                 children: (
@@ -455,16 +599,16 @@ export function AdminDashboard({
                 )
               },
               {
-                key: "posts",
-                label: "Posts",
+                key: "products",
+                label: "Products",
                 children: (
                   <div className="grid gap-4">
-                    <Button className="w-fit" type="primary" onClick={() => openCreate("post")}>
-                      Add post
+                    <Button className="w-fit" type="primary" onClick={() => openCreate("product")}>
+                      Add product
                     </Button>
-                    <Table<Post>
-                      columns={postColumns}
-                      dataSource={posts}
+                    <Table<Product>
+                      columns={productColumns}
+                      dataSource={products}
                       loading={loading}
                       rowKey="id"
                     />
@@ -499,6 +643,47 @@ export function AdminDashboard({
           loading: saving
         }}
         onCancel={() => setEditing(null)}
+        onOk={bannerForm.handleSubmit(submitBanner)}
+        open={editing?.entity === "banner"}
+        title={editing?.entity === "banner" && editing.record ? "Edit banner" : "Add banner"}
+      >
+        <form className="grid gap-4" onSubmit={bannerForm.handleSubmit(submitBanner)}>
+          <FieldLabel error={bannerForm.formState.errors.title?.message} label="Title">
+            <Controller
+              control={bannerForm.control}
+              name="title"
+              rules={{ required: "Title is required" }}
+              render={({ field }) => (
+                <Input {...field} status={bannerForm.formState.errors.title ? "error" : ""} />
+              )}
+            />
+          </FieldLabel>
+          <FieldLabel error={bannerForm.formState.errors.image?.message} label="Image">
+            <Controller
+              control={bannerForm.control}
+              name="image"
+              rules={{ required: "Image is required" }}
+              render={({ field }) => (
+                <ImageUploadField
+                  key={field.value ?? "empty-banner-image"}
+                  loading={uploading}
+                  multiple={false}
+                  onChange={(urls) => field.onChange(urls[0] ?? null)}
+                  onUpload={handleUploadImages}
+                  value={field.value ? [field.value] : []}
+                />
+              )}
+            />
+          </FieldLabel>
+        </form>
+      </Modal>
+
+      <Modal
+        destroyOnHidden
+        okButtonProps={{
+          loading: saving
+        }}
+        onCancel={() => setEditing(null)}
         onOk={categoryForm.handleSubmit(submitCategory)}
         open={editing?.entity === "category"}
         title={editing?.entity === "category" && editing.record ? "Edit category" : "Add category"}
@@ -524,6 +709,22 @@ export function AdminDashboard({
               )}
             />
           </FieldLabel>
+          <FieldLabel label="Image">
+            <Controller
+              control={categoryForm.control}
+              name="imageUrl"
+              render={({ field }) => (
+                <ImageUploadField
+                  key={field.value ?? "empty-category-image"}
+                  loading={uploading}
+                  multiple={false}
+                  onChange={(urls) => field.onChange(urls[0] ?? null)}
+                  onUpload={handleUploadImages}
+                  value={field.value ? [field.value] : []}
+                />
+              )}
+            />
+          </FieldLabel>
         </form>
       </Modal>
 
@@ -533,38 +734,38 @@ export function AdminDashboard({
           loading: saving
         }}
         onCancel={() => setEditing(null)}
-        onOk={postForm.handleSubmit(submitPost)}
-        open={editing?.entity === "post"}
-        title={editing?.entity === "post" && editing.record ? "Edit post" : "Add post"}
+        onOk={productForm.handleSubmit(submitProduct)}
+        open={editing?.entity === "product"}
+        title={editing?.entity === "product" && editing.record ? "Edit product" : "Add product"}
       >
-        <form className="grid gap-4" onSubmit={postForm.handleSubmit(submitPost)}>
-          <FieldLabel error={postForm.formState.errors.title?.message} label="Title">
+        <form className="grid gap-4" onSubmit={productForm.handleSubmit(submitProduct)}>
+          <FieldLabel error={productForm.formState.errors.name?.message} label="Name">
             <Controller
-              control={postForm.control}
-              name="title"
-              rules={{ required: "Title is required" }}
+              control={productForm.control}
+              name="name"
+              rules={{ required: "Name is required" }}
               render={({ field }) => (
-                <Input {...field} status={postForm.formState.errors.title ? "error" : ""} />
+                <Input {...field} status={productForm.formState.errors.name ? "error" : ""} />
               )}
             />
           </FieldLabel>
-          <FieldLabel error={postForm.formState.errors.description?.message} label="Description">
+          <FieldLabel error={productForm.formState.errors.description?.message} label="Description">
             <Controller
-              control={postForm.control}
+              control={productForm.control}
               name="description"
               rules={{ required: "Description is required" }}
               render={({ field }) => (
                 <Input.TextArea
                   {...field}
                   rows={4}
-                  status={postForm.formState.errors.description ? "error" : ""}
+                  status={productForm.formState.errors.description ? "error" : ""}
                 />
               )}
             />
           </FieldLabel>
-          <FieldLabel error={postForm.formState.errors.categoryId?.message} label="Category">
+          <FieldLabel error={productForm.formState.errors.categoryId?.message} label="Category">
             <Controller
-              control={postForm.control}
+              control={productForm.control}
               name="categoryId"
               rules={{ required: "Category is required" }}
               render={({ field }) => (
@@ -572,17 +773,85 @@ export function AdminDashboard({
                   {...field}
                   options={categoryOptions}
                   placeholder="Select category"
-                  status={postForm.formState.errors.categoryId ? "error" : ""}
+                  status={productForm.formState.errors.categoryId ? "error" : ""}
+                />
+              )}
+            />
+          </FieldLabel>
+          <FieldLabel error={productForm.formState.errors.price?.message} label="Price">
+            <Controller
+              control={productForm.control}
+              name="price"
+              rules={{
+                required: "Price is required",
+                min: { value: 0, message: "Price must be 0 or greater" }
+              }}
+              render={({ field }) => (
+                <InputNumber
+                  className="w-full"
+                  min={0}
+                  precision={0}
+                  status={productForm.formState.errors.price ? "error" : ""}
+                  value={field.value}
+                  onChange={(value) => field.onChange(value ?? 0)}
+                />
+              )}
+            />
+          </FieldLabel>
+          <FieldLabel error={productForm.formState.errors.quantity?.message} label="Quantity">
+            <Controller
+              control={productForm.control}
+              name="quantity"
+              rules={{
+                required: "Quantity is required",
+                min: { value: 0, message: "Quantity must be 0 or greater" }
+              }}
+              render={({ field }) => (
+                <InputNumber
+                  className="w-full"
+                  min={0}
+                  precision={0}
+                  status={productForm.formState.errors.quantity ? "error" : ""}
+                  value={field.value}
+                  onChange={(value) => {
+                    const nextValue = value ?? 0;
+                    field.onChange(nextValue);
+                    if (!(editing?.entity === "product" && editing.record)) {
+                      productForm.setValue("inventory", nextValue, { shouldValidate: true });
+                    }
+                  }}
+                />
+              )}
+            />
+          </FieldLabel>
+          <FieldLabel error={productForm.formState.errors.inventory?.message} label="Inventory">
+            <Controller
+              control={productForm.control}
+              name="inventory"
+              rules={{
+                required: "Inventory is required",
+                min: { value: 0, message: "Inventory must be 0 or greater" }
+              }}
+              render={({ field }) => (
+                <InputNumber
+                  className="w-full"
+                  disabled={!(editing?.entity === "product" && editing.record)}
+                  min={0}
+                  precision={0}
+                  status={productForm.formState.errors.inventory ? "error" : ""}
+                  value={field.value}
+                  onChange={(value) => field.onChange(value ?? 0)}
                 />
               )}
             />
           </FieldLabel>
           <FieldLabel label="Images">
             <Controller
-              control={postForm.control}
+              control={productForm.control}
               name="imageUrls"
               render={({ field }) => (
                 <ImageUploadField
+                  key={field.value.join("|") || "empty-product-images"}
                   loading={uploading}
                   onChange={field.onChange}
                   onUpload={handleUploadImages}
@@ -664,26 +933,37 @@ function FieldLabel({
   label: string;
 }) {
   return (
-    <label className="grid gap-1.5">
+    <div className="grid gap-1.5">
       <span className="text-sm font-medium">{label}</span>
       {children}
       {error ? <span className="text-xs text-red-600">{error}</span> : null}
-    </label>
+    </div>
   );
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("vi-VN", {
+    currency: "VND",
+    style: "currency"
+  }).format(value);
 }
 
 function ImageUploadField({
   loading,
+  multiple = true,
   onChange,
   onUpload,
   value = []
 }: {
   loading: boolean;
+  multiple?: boolean;
   onChange?: (value: string[]) => void;
   onUpload: (files: File[]) => Promise<string[]>;
   value?: string[];
 }) {
-  const fileList: UploadFile[] = value.map((url, index) => ({
+  const [displayUrls, setDisplayUrls] = useState(value);
+
+  const fileList: UploadFile[] = displayUrls.map((url, index) => ({
     uid: url,
     name: `image-${index + 1}`,
     status: "done",
@@ -693,26 +973,35 @@ function ImageUploadField({
   return (
     <Upload
       accept="image/*"
-      customRequest={async ({ file, onError, onSuccess }) => {
+      beforeUpload={async (file) => {
         try {
-          const uploadedUrls = await onUpload([file as File]);
-          onChange?.([...value, ...uploadedUrls]);
-          onSuccess?.("ok");
-        } catch (error) {
-          onError?.(error instanceof Error ? error : new Error("Upload failed"));
+          const uploadedUrls = await onUpload([file]);
+          const nextUrls = multiple ? [...displayUrls, ...uploadedUrls] : uploadedUrls.slice(0, 1);
+
+          setDisplayUrls(nextUrls);
+          onChange?.(nextUrls);
+        } catch {
+          // handleUploadImages already displays the API error through AntD message.
         }
+
+        return Upload.LIST_IGNORE;
       }}
       fileList={fileList}
       listType="picture-card"
-      multiple
+      maxCount={multiple ? undefined : 1}
+      multiple={multiple}
       onRemove={(file) => {
-        onChange?.(value.filter((url) => url !== file.url));
+        const removedUrl = file.url ?? file.uid;
+        const nextUrls = displayUrls.filter((url) => url !== removedUrl);
+
+        setDisplayUrls(nextUrls);
+        onChange?.(nextUrls);
       }}
       showUploadList={{
         showPreviewIcon: false
       }}
     >
-      {loading ? "Uploading..." : "Upload"}
+      {!multiple && displayUrls.length > 0 ? null : loading ? "Uploading..." : "Upload"}
     </Upload>
   );
 }
