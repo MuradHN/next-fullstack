@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     return response;
   }
 
-  const posts = await prisma.post.findMany({
+  const products = await prisma.product.findMany({
     include: {
       category: true,
       images: {
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     }
   });
 
-  return NextResponse.json({ posts });
+  return NextResponse.json({ products });
 }
 
 export async function POST(request: Request) {
@@ -35,31 +35,38 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as {
-    title?: unknown;
-    description?: unknown;
     categoryId?: unknown;
+    description?: unknown;
     imageUrls?: unknown;
+    name?: unknown;
+    price?: unknown;
+    quantity?: unknown;
   };
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const description = typeof body.description === "string" ? body.description.trim() : "";
   const categoryId = typeof body.categoryId === "string" ? body.categoryId : "";
+  const description = typeof body.description === "string" ? body.description.trim() : "";
   const imageUrls = Array.isArray(body.imageUrls)
     ? body.imageUrls.filter((url): url is string => typeof url === "string" && url.trim() !== "")
     : [];
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const price = parseNumber(body.price);
+  const quantity = parseNumber(body.quantity);
 
-  if (!title || !description || !categoryId) {
+  if (!name || !description || !categoryId || price === null || quantity === null) {
     return NextResponse.json(
-      { message: "Title, description and category are required" },
+      { message: "Name, description, category, price and quantity are required" },
       { status: 400 }
     );
   }
 
   try {
-    const post = await prisma.post.create({
+    const product = await prisma.product.create({
       data: {
-        title,
-        description,
         categoryId,
+        description,
+        inventory: quantity,
+        name,
+        price,
+        quantity,
         images: {
           create: imageUrls.map((url) => ({
             url
@@ -72,7 +79,7 @@ export async function POST(request: Request) {
       }
     });
 
-    return NextResponse.json({ post }, { status: 201 });
+    return NextResponse.json({ product }, { status: 201 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
       return NextResponse.json({ message: "Category not found" }, { status: 400 });
@@ -80,4 +87,14 @@ export async function POST(request: Request) {
 
     throw error;
   }
+}
+
+function parseNumber(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(numberValue) || numberValue < 0) {
+    return null;
+  }
+
+  return Math.floor(numberValue);
 }

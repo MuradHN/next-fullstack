@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     include: {
       _count: {
         select: {
-          posts: true
+          products: true
         }
       }
     },
@@ -34,9 +34,11 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as {
+    imageUrl?: unknown;
     name?: unknown;
     slug?: unknown;
   };
+  const imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : null;
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
 
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
   try {
     const category = await prisma.category.create({
       data: {
+        imageUrl,
         name,
         slug
       }

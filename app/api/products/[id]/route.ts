@@ -18,34 +18,50 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const body = (await request.json()) as {
-    title?: unknown;
-    description?: unknown;
     categoryId?: unknown;
+    description?: unknown;
     imageUrls?: unknown;
+    inventory?: unknown;
+    name?: unknown;
+    price?: unknown;
+    quantity?: unknown;
   };
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const description = typeof body.description === "string" ? body.description.trim() : "";
   const categoryId = typeof body.categoryId === "string" ? body.categoryId : "";
+  const description = typeof body.description === "string" ? body.description.trim() : "";
   const imageUrls = Array.isArray(body.imageUrls)
     ? body.imageUrls.filter((url): url is string => typeof url === "string" && url.trim() !== "")
     : [];
+  const inventory = parseNumber(body.inventory);
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const price = parseNumber(body.price);
+  const quantity = parseNumber(body.quantity);
 
-  if (!title || !description || !categoryId) {
+  if (
+    !name ||
+    !description ||
+    !categoryId ||
+    inventory === null ||
+    price === null ||
+    quantity === null
+  ) {
     return NextResponse.json(
-      { message: "Title, description and category are required" },
+      { message: "Name, description, category, price, quantity and inventory are required" },
       { status: 400 }
     );
   }
 
   try {
-    const post = await prisma.post.update({
+    const product = await prisma.product.update({
       where: {
         id
       },
       data: {
-        title,
-        description,
         categoryId,
+        description,
+        inventory,
+        name,
+        price,
+        quantity,
         images: {
           deleteMany: {},
           create: imageUrls.map((url) => ({
@@ -59,10 +75,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     });
 
-    return NextResponse.json({ post });
+    return NextResponse.json({ product });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      return NextResponse.json({ message: "Post not found" }, { status: 404 });
+      return NextResponse.json({ message: "Product not found" }, { status: 404 });
     }
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
@@ -83,7 +99,7 @@ export async function DELETE(request: Request, context: RouteContext) {
   const { id } = await context.params;
 
   try {
-    await prisma.post.delete({
+    await prisma.product.delete({
       where: {
         id
       }
@@ -92,9 +108,19 @@ export async function DELETE(request: Request, context: RouteContext) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      return NextResponse.json({ message: "Post not found" }, { status: 404 });
+      return NextResponse.json({ message: "Product not found" }, { status: 404 });
     }
 
     throw error;
   }
+}
+
+function parseNumber(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(numberValue) || numberValue < 0) {
+    return null;
+  }
+
+  return Math.floor(numberValue);
 }

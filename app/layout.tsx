@@ -5,8 +5,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Next Prisma Starter",
-  description: "Next.js frontend and backend starter with Prisma"
+  title: "Long Châu Pharma",
+  description: "Chuyên trang dược phẩm và sức khỏe"
 };
 
 export default function RootLayout({

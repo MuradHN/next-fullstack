@@ -10,12 +10,17 @@ export default async function AdminPage() {
     redirect("/login");
   }
 
-  const [categories, posts, users] = await Promise.all([
+  const [banners, categories, products, users] = await Promise.all([
+    prisma.banner.findMany({
+      orderBy: {
+        createdAt: "desc"
+      }
+    }),
     prisma.category.findMany({
       include: {
         _count: {
           select: {
-            posts: true
+            products: true
           }
         }
       },
@@ -23,7 +28,7 @@ export default async function AdminPage() {
         createdAt: "desc"
       }
     }),
-    prisma.post.findMany({
+    prisma.product.findMany({
       include: {
         category: true,
         images: {
@@ -56,26 +61,36 @@ export default async function AdminPage() {
         name: user.name
       }}
       initialData={{
+        banners: banners.map((banner) => ({
+          id: banner.id,
+          image: banner.image,
+          title: banner.title
+        })),
         categories: categories.map((category) => ({
           id: category.id,
+          imageUrl: category.imageUrl,
           name: category.name,
           slug: category.slug,
           _count: category._count
         })),
-        posts: posts.map((post) => ({
-          id: post.id,
-          title: post.title,
-          description: post.description,
-          categoryId: post.categoryId,
+        products: products.map((product) => ({
+          id: product.id,
+          categoryId: product.categoryId,
           category: {
-            id: post.category.id,
-            name: post.category.name,
-            slug: post.category.slug
+            id: product.category.id,
+            imageUrl: product.category.imageUrl,
+            name: product.category.name,
+            slug: product.category.slug
           },
-          images: post.images.map((image) => ({
+          description: product.description,
+          images: product.images.map((image) => ({
             id: image.id,
             url: image.url
-          }))
+          })),
+          inventory: product.inventory,
+          name: product.name,
+          price: product.price,
+          quantity: product.quantity
         })),
         users
       }}

@@ -10,7 +10,7 @@ type LegacyPostDetailPageProps = {
 
 export default async function LegacyPostDetailPage({ params }: LegacyPostDetailPageProps) {
   const { id } = await params;
-  const post = await prisma.post.findUnique({
+  const product = await prisma.product.findUnique({
     where: {
       id
     },
@@ -19,9 +19,9 @@ export default async function LegacyPostDetailPage({ params }: LegacyPostDetailP
     }
   });
 
-  if (!post) {
+  if (!product) {
     redirect("/");
   }
 
-  redirect(getPostUrl(post.category.slug, post.id));
+  redirect(getPostUrl(product.category.slug, product.id));
 }
