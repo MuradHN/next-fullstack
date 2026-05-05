@@ -31,63 +31,82 @@ function getExtension(file: File) {
 }
 
 export async function POST(request: Request) {
-  const { response } = await requireApiUser(request);
+  try {
+    const { response } = await requireApiUser(request);
 
-  if (response) {
-    return response;
-  }
+    if (response) {
+      return response;
+    }
 
-  const formData = await request.formData();
-  const files = formData
-    .getAll("files")
-    .filter((value): value is File => value instanceof File && value.size > 0);
+    const formData = await request.formData();
+    const files = formData
+      .getAll("files")
+      .filter((value): value is File => value instanceof File && value.size > 0);
 
-  if (files.length === 0) {
-    return NextResponse.json({ message: "At least one image is required" }, { status: 400 });
-  }
+    if (files.length === 0) {
+      return NextResponse.json({ message: "At least one image is required" }, { status: 400 });
+    }
 
-  const invalidFile = files.find((file) => !allowedTypes.has(file.type));
+    const invalidFile = files.find((file) => !allowedTypes.has(file.type));
 
-  if (invalidFile) {
-    return NextResponse.json(
-      { message: "Only jpg, png, webp and gif images are allowed" },
-      { status: 400 }
-    );
-  }
+    if (invalidFile) {
+      return NextResponse.json(
+        { message: "Only jpg, png, webp and gif images are allowed" },
+        { status: 400 }
+      );
+    }
 
-  if (process.env.NODE_ENV !== "production") {
-    await mkdir(uploadDir, {
-      recursive: true
-    });
-  }
+    if (process.env.NODE_ENV === "production" && !process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json(
+        { message: "Missing BLOB_READ_WRITE_TOKEN. Connect Vercel Blob storage to this project." },
+        { status: 500 }
+      );
+    }
 
-  const uploaded = await Promise.all(
-    files.map(async (file) => {
-      const fileName = `${Date.now()}-${randomUUID()}${getExtension(file)}`;
-      const bytes = Buffer.from(await file.arrayBuffer());
+    if (process.env.NODE_ENV !== "production") {
+      await mkdir(uploadDir, {
+        recursive: true
+      });
+    }
 
-      if (process.env.NODE_ENV === "production") {
-        const blob = await put(`uploads/${fileName}`, bytes, {
-          access: "public",
-          contentType: file.type
-        });
+    const uploaded = await Promise.all(
+      files.map(async (file) => {
+        const fileName = `${Date.now()}-${randomUUID()}${getExtension(file)}`;
+        const bytes = Buffer.from(await file.arrayBuffer());
+
+        if (process.env.NODE_ENV === "production") {
+          const blob = await put(`uploads/${fileName}`, bytes, {
+            access: "public",
+            contentType: file.type,
+            token: process.env.BLOB_READ_WRITE_TOKEN
+          });
+
+          return {
+            name: file.name,
+            url: blob.url
+          };
+        }
+
+        const filePath = path.join(uploadDir, fileName);
+
+        await writeFile(filePath, bytes);
 
         return {
           name: file.name,
-          url: blob.url
+          url: `/uploads/${fileName}`
         };
-      }
+      })
+    );
 
-      const filePath = path.join(uploadDir, fileName);
+    return NextResponse.json({ files: uploaded }, { status: 201 });
+  } catch (error) {
+    console.error("Upload failed", error);
 
-      await writeFile(filePath, bytes);
-
-      return {
-        name: file.name,
-        url: `/uploads/${fileName}`
-      };
-    })
-  );
-
-  return NextResponse.json({ files: uploaded }, { status: 201 });
+    return NextResponse.json(
+      {
+        message: error instanceof Error ? error.message : "Upload failed"
+      },
+      { status: 500 }
+    );
+  }
 }
