@@ -7,6 +7,7 @@ import { requireApiUser } from "@/lib/api-auth";
 
 const uploadDir = path.join(process.cwd(), "public", "uploads");
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const uploadStorage = process.env.UPLOAD_STORAGE ?? "local";
 
 function getExtension(file: File) {
   const extension = path.extname(file.name).toLowerCase();
@@ -56,14 +57,14 @@ export async function POST(request: Request) {
       );
     }
 
-    if (process.env.NODE_ENV === "production" && !process.env.BLOB_READ_WRITE_TOKEN) {
+    if (uploadStorage === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) {
       return NextResponse.json(
         { message: "Missing BLOB_READ_WRITE_TOKEN. Connect Vercel Blob storage to this project." },
         { status: 500 }
       );
     }
 
-    if (process.env.NODE_ENV !== "production") {
+    if (uploadStorage === "local") {
       await mkdir(uploadDir, {
         recursive: true
       });
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
         const fileName = `${Date.now()}-${randomUUID()}${getExtension(file)}`;
         const bytes = Buffer.from(await file.arrayBuffer());
 
-        if (process.env.NODE_ENV === "production") {
+        if (uploadStorage === "blob") {
           const blob = await put(`uploads/${fileName}`, bytes, {
             access: "public",
             contentType: file.type,
