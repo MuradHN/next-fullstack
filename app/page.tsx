@@ -16,6 +16,8 @@ const fallbackCategories = [
 
 const badges = ["-15%", "Bán chạy", "Mới", ""];
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const [banners, products] = await Promise.all([
     prisma.banner.findMany({
